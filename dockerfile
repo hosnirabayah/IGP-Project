@@ -1,3 +1,4 @@
 FROM tomcat
-COPY /var/lib/jenkins/workspace/ABC-Package/target/ABCtechnologies-1.0.war  /opt/tomcat/webapps
+COPY target/ABCtechnologies-1.0.war /usr/local/tomcat/webapps/
+EXPOSE 8090
 CMD ["catalina.sh", "run"]
