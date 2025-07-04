@@ -1,36 +1,92 @@
 pipeline {
     agent any
+
+    environment {
+        DOCKERHUB_USER = 'hosnirabayah'
+        IMAGE_NAME = 'abctechnologies'
+    }
+
     stages {
-        stage('Code Checkout') {
+        stage('Checkout from Git') {
             steps {
-                git 'https://github.com/hosnirabayah/IGP-Project.git'
+                git url: 'https://github.com/hosnirabayah/IGP-Project.git', branch: 'master'
             }
         }
 
-        stage('Code Compile') {
+        stage('Compile') {
             steps {
                 sh 'mvn compile'
             }
         }
 
-        stage('Unit Test') {
+        stage('Test') {
             steps {
                 sh 'mvn test'
             }
         }
 
-        stage('Static Code Analysis') {
-            steps {
-                sh 'mvn sonar:sonar'
-            }
-        }
-
-        stage('Package') {
+        stage('Package WAR') {
             steps {
                 sh 'mvn package'
             }
         }
 
-    
+        stage('Generate Version') {
+            steps {
+                script {
+                    def timestamp = new Date().format("yyyyMMdd-HHmm")
+                    env.IMAGE_TAG = "v${env.BUILD_NUMBER}-${timestamp}"
+                    echo "Generated Docker Tag: ${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('Prepare WAR for Docker') {
+            steps {
+                sh 'cp target/ABCtechnologies-1.0.war ./ABCtechnologies-1.0.war'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t abctechnologies-temp .'
+            }
+        }
+
+        stage('Tag Docker Image') {
+            steps {
+                sh 'docker tag abctechnologies-temp hosnirabayah/abctechnologies:${IMAGE_TAG}'
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push hosnirabayah/abctechnologies:${IMAGE_TAG}
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy as Container') {
+            steps {
+                sh '''
+                    docker rm -f abctechnologies || true
+                    docker run -d --name abctechnologies -p 9090:8080 hosnirabayah/abctechnologies:${IMAGE_TAG}
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Build & Deploy completed: hosnirabayah/abctechnologies:${env.IMAGE_TAG}"
+        }
+        failure {
+            echo "❌ Pipeline failed. Please check logs."
+        }
     }
 }
+
